@@ -40,8 +40,97 @@
   let successAnimation = false
   let errorTimer
   let successTimer
+  let tableProgress = {}
+  const TABLE_PROGRESS_KEY = 'tableProgress'
 
   const metaDescription = 'Te hice esta página para que practiques! Completa cada tabla en menos de 40 segundos para demostrar que lograrás ganarte tu premio 📷'
+
+  function normalizeProgress(raw) {
+    if (!raw || typeof raw !== 'object') return {}
+    const normalized = {}
+    Object.entries(raw).forEach(([key, value]) => {
+      const tableNumber = Number(key)
+      if (!Number.isInteger(tableNumber)) return
+      const data =
+        value && typeof value === 'object'
+          ? {
+              completions: typeof value.completions === 'number' ? value.completions : Number(value) || 0,
+              streak: typeof value.streak === 'number' ? value.streak : 0,
+              trophyUnlocked: Boolean(value.trophyUnlocked)
+            }
+          : { completions: Number(value) || 0, streak: 0, trophyUnlocked: false }
+
+      normalized[tableNumber] = {
+        completions: Math.max(0, data.completions),
+        streak: Math.max(0, data.streak),
+        trophyUnlocked: Boolean(data.trophyUnlocked || data.streak >= 2)
+      }
+    })
+    return normalized
+  }
+
+  function persistTableProgress(nextProgress) {
+    tableProgress = nextProgress
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(TABLE_PROGRESS_KEY, JSON.stringify(nextProgress))
+    }
+  }
+
+  function loadTableProgress() {
+    if (typeof window === 'undefined') return
+    try {
+      const stored = window.sessionStorage.getItem(TABLE_PROGRESS_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        persistTableProgress(normalizeProgress(parsed))
+        return
+      }
+
+      const legacy = window.sessionStorage.getItem('completedTables')
+      if (legacy) {
+        const parsedLegacy = JSON.parse(legacy)
+        if (Array.isArray(parsedLegacy)) {
+          const legacyProgress = parsedLegacy.reduce((acc, value) => {
+            const tableNumber = Number(value)
+            if (Number.isInteger(tableNumber)) {
+              acc[tableNumber] = { completions: 1, streak: 1, trophyUnlocked: false }
+            }
+            return acc
+          }, {})
+          persistTableProgress(legacyProgress)
+          window.sessionStorage.removeItem('completedTables')
+        }
+      }
+    } catch (error) {
+      console.warn('No se pudo cargar el progreso de las tablas.', error)
+    }
+  }
+
+  function recordTableSuccess(table) {
+    const previous = tableProgress[table] || { completions: 0, streak: 0, trophyUnlocked: false }
+    const streak = previous.streak + 1
+    const updated = {
+      completions: previous.completions + 1,
+      streak,
+      trophyUnlocked: previous.trophyUnlocked || streak >= 2
+    }
+    persistTableProgress({ ...tableProgress, [table]: updated })
+  }
+
+  function recordTableFailure(table) {
+    const previous = tableProgress[table]
+    if (!previous) return
+    const updated = { ...previous, streak: 0 }
+    persistTableProgress({ ...tableProgress, [table]: updated })
+  }
+
+  function hasCompletedTable(table) {
+    return Boolean(tableProgress[table]?.completions >= 1)
+  }
+
+  function hasTrophyForTable(table) {
+    return Boolean(tableProgress[table]?.trophyUnlocked)
+  }
 
   function launchConfetti() {
     if (typeof window === 'undefined') return
@@ -183,6 +272,9 @@
       : 'El tiempo terminó, pero tu constancia es la magia. ¡Vamos de nuevo!'
     if (succeeded) {
       launchConfetti()
+      recordTableSuccess(selectedTable)
+    } else {
+      recordTableFailure(selectedTable)
     }
   }
 
@@ -216,6 +308,8 @@
   }
 
   onMount(() => {
+    loadTableProgress()
+
     const handleGlobalKeys = (event) => {
       if (screen !== 'reto' || status !== 'running') return
       if (/^\d$/.test(event.key)) {
@@ -288,8 +382,20 @@
           <p>Escoge la tabla que quieres dominar hoy. Practica primero, luego corre contra el reloj.</p>
           <div class="tab-grid" aria-label="Selecciona la tabla que quieres practicar">
             {#each TABLES as table}
-              <button type="button" class:selected={table === selectedTable} on:click={() => (selectedTable = table)}>
+              <button
+                type="button"
+                class:selected={table === selectedTable}
+                class:completed={hasCompletedTable(table)}
+                class:trophy={hasTrophyForTable(table)}
+                on:click={() => (selectedTable = table)}
+                aria-label={`Tabla del ${table}${hasTrophyForTable(table) ? ' con trofeo' : hasCompletedTable(table) ? ' completada' : ''}`}
+              >
                 × {table}
+                {#if hasCompletedTable(table)}
+                  <span class="tab-check" class:trophy={hasTrophyForTable(table)} aria-hidden="true">
+                    {hasTrophyForTable(table) ? '🏆' : '★'}
+                  </span>
+                {/if}
               </button>
             {/each}
           </div>
