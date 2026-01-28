@@ -1,9 +1,11 @@
 <script>
-  import { onDestroy, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
 
   const TABLAS = Array.from({ length: 12 }, (_, i) => i + 1)
   const MULTIPLICADORES = Array.from({ length: 10 }, (_, i) => i + 1)
   const TIEMPO_MAXIMO = 40
+  const NUMPAD_DIGITOS = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+  const MAX_DIGITOS_RESPUESTA = 3
 
   const mensajesAplauso = [
     '¡Brillas como un sol!',
@@ -29,11 +31,14 @@
   let estado = 'idle' // idle | running | success | timeout
   let mensaje = 'Elige una tabla y presiona comenzar.'
   let intervalo
-  let campoRespuesta
   let pantalla = 'intro' // intro | reto
   let practicaFactor = MULTIPLICADORES[0]
   let practicaRespuesta = ''
   let practicaMensaje = 'Escribe la respuesta y presiona comprobar.'
+  let animacionError = false
+  let animacionAcierto = false
+  let temporizadorError
+  let temporizadorAcierto
 
   const metaDescripcion = 'Te hice esta página para que practiques! Completa cada tabla en menos de 40 segundos para demostrar que lograrás ganarte tu premio 📷'
 
@@ -75,6 +80,51 @@
     return Number.isNaN(convertido) ? null : convertido
   }
 
+  function agregarDigito(digito) {
+    if (estado !== 'running') return
+    if (respuesta.length >= MAX_DIGITOS_RESPUESTA) return
+    const siguiente = `${respuesta}${digito}`
+    respuesta = siguiente.replace(/^0+(?=\d)/, '')
+  }
+
+  function borrarDigito() {
+    if (!respuesta) return
+    respuesta = respuesta.slice(0, -1)
+  }
+
+  function limpiarRespuestaManual() {
+    respuesta = ''
+  }
+
+  async function reproducirAnimacion(tipo) {
+    if (tipo === 'error') {
+      animacionError = false
+      await tick()
+      animacionError = true
+      if (temporizadorError) {
+        clearTimeout(temporizadorError)
+      }
+      temporizadorError = setTimeout(() => {
+        animacionError = false
+        temporizadorError = undefined
+      }, 600)
+      return
+    }
+
+    if (tipo === 'success') {
+      animacionAcierto = false
+      await tick()
+      animacionAcierto = true
+      if (temporizadorAcierto) {
+        clearTimeout(temporizadorAcierto)
+      }
+      temporizadorAcierto = setTimeout(() => {
+        animacionAcierto = false
+        temporizadorAcierto = undefined
+      }, 650)
+    }
+  }
+
   function mezclar(array) {
     return array
       .map((valor) => ({ valor, orden: Math.random() }))
@@ -99,6 +149,8 @@
     tiempoRestante = TIEMPO_MAXIMO
     estado = 'running'
     mensaje = '¡Vamos, Daniela! Escucha tu ritmo y responde con calma.'
+    animacionError = false
+    animacionAcierto = false
     limpiarIntervalo()
     intervalo = setInterval(() => {
       tiempoRestante -= 1
@@ -107,18 +159,12 @@
         terminar(false)
       }
     }, 1000)
-    enfocarCampo()
   }
 
   async function comenzarReto() {
     pantalla = 'reto'
     await tick()
     iniciarReto()
-  }
-
-  async function enfocarCampo() {
-    await tick()
-    campoRespuesta?.focus()
   }
 
   function terminar(conExito) {
@@ -146,6 +192,7 @@
     if (valor === esperado) {
       indiceActual += 1
       respuesta = ''
+      reproducirAnimacion('success')
       mensaje = mensajesAplauso[Math.floor(Math.random() * mensajesAplauso.length)]
       if (indiceActual >= preguntas.length) {
         terminar(true)
@@ -153,15 +200,40 @@
     } else {
       mensaje = mensajesReintento[Math.floor(Math.random() * mensajesReintento.length)]
       respuesta = ''
+      reproducirAnimacion('error')
     }
   }
 
-  function manejarTeclado(event) {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      enviarRespuesta()
+  onMount(() => {
+    const manejarTeclasGlobales = (event) => {
+      if (pantalla !== 'reto' || estado !== 'running') return
+      if (/^\d$/.test(event.key)) {
+        event.preventDefault()
+        agregarDigito(event.key)
+        return
+      }
+      if (event.key === 'Backspace') {
+        event.preventDefault()
+        borrarDigito()
+        return
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        enviarRespuesta()
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        limpiarRespuestaManual()
+      }
     }
-  }
+
+    window.addEventListener('keydown', manejarTeclasGlobales)
+
+    return () => {
+      window.removeEventListener('keydown', manejarTeclasGlobales)
+    }
+  })
 
   function volverAlIntro() {
     limpiarIntervalo()
@@ -172,11 +244,19 @@
     respuesta = ''
     tiempoRestante = TIEMPO_MAXIMO
     pantalla = 'intro'
+    animacionError = false
+    animacionAcierto = false
     nuevaPractica()
   }
 
   onDestroy(() => {
     limpiarIntervalo()
+    if (temporizadorError) {
+      clearTimeout(temporizadorError)
+    }
+    if (temporizadorAcierto) {
+      clearTimeout(temporizadorAcierto)
+    }
   })
 
   nuevaPractica()
@@ -217,18 +297,14 @@
     </section>
   {:else}
     <section class="panel reto-panel">
-      <div class="reto-header">
-        <div>
-          <p class="etiqueta">Tabla en juego</p>
-          <p class="tabla-actual">Tabla del {tablaSeleccionada}</p>
+      <header class="reto-banner">
+        <div class="reto-banner__info">
+          <strong>Tabla del {tablaSeleccionada}</strong>
         </div>
-        <div class="reto-controls">
+        <div class="reto-banner__acciones">
           <button class="boton-link" type="button" on:click={volverAlIntro}>Cambiar tabla</button>
-          <button class="boton-accion" type="button" on:click={iniciarReto}>
-            {estado === 'running' ? 'Reiniciar reto' : 'Intentar de nuevo'}
-          </button>
         </div>
-      </div>
+      </header>
 
       <div class="timer" aria-live="off">
         <div class="timer-bar">
@@ -237,22 +313,46 @@
         <span>{tiempoRestante.toString().padStart(2, '0')} seg restantes</span>
       </div>
 
-      <article class="question-box">
+      <article class="question-box" class:error={animacionError} class:success={animacionAcierto}>
         {#if estado === 'running' && preguntaActual}
           <p class="mini">Pregunta {indiceActual + 1} de {preguntas.length}</p>
+          <div class="progress-area inline">
+            <div class="progress-track">
+              <div class="progress-fill" style={`width: ${progreso}%`}></div>
+            </div>
+            <p>{progreso}%</p>
+          </div>
           <h2>{preguntaActual.a} × {preguntaActual.b} = ?</h2>
           <div class="answer-row">
-            <input
-              type="number"
-              inputmode="numeric"
-              placeholder="Escribe la respuesta"
-              bind:value={respuesta}
-              on:keydown={manejarTeclado}
-              bind:this={campoRespuesta}
-            />
-            <button type="button" class="boton-accion secundario" on:click={enviarRespuesta}>
-              ¡Listo!
-            </button>
+            <div class="answer-pad">
+              <div class="numpad-display" aria-live="polite" aria-label="Respuesta ingresada">
+                <span class:placeholder={!respuesta}>{respuesta || '0'}</span>
+                {#if respuesta}
+                  <button type="button" class="display-clear" aria-label="Borrar respuesta" on:click={limpiarRespuestaManual}>
+                    ✕
+                  </button>
+                {/if}
+              </div>
+              <div class="numpad-grid" role="group" aria-label="Numpad para ingresar la respuesta">
+                {#each NUMPAD_DIGITOS as digito}
+                  <button type="button" class="numpad-key" on:click={() => agregarDigito(digito)}>
+                    {digito}
+                  </button>
+                {/each}
+                <button type="button" class="numpad-key action" on:click={limpiarRespuestaManual}>
+                  Limpiar
+                </button>
+                <button type="button" class="numpad-key cero" on:click={() => agregarDigito('0')}>
+                  0
+                </button>
+                <button type="button" class="numpad-key action" aria-label="Borrar último número" on:click={borrarDigito}>
+                  ⌫
+                </button>
+              </div>
+              <button type="button" class="boton-accion secundario full" on:click={enviarRespuesta}>
+                ¡Listo!
+              </button>
+            </div>
           </div>
         {:else if estado === 'success'}
           <h2>¡Lo lograste!</h2>
@@ -274,23 +374,10 @@
         {/if}
       </article>
 
-      <div class="status-strip" aria-live="polite">
-        <div>
-          <span class="label">Progreso</span>
-          <strong>{indiceActual}/{preguntas.length || MULTIPLICADORES.length}</strong>
-        </div>
-        <div>
-          <span class="label">Ánimo</span>
-          <strong>{mensaje}</strong>
-        </div>
-      </div>
-
-      <div class="progress-area">
-        <div class="progress-track">
-          <div class="progress-fill" style={`width: ${progreso}%`}></div>
-        </div>
-        <p>{progreso}% de la tabla superada</p>
-      </div>
+      <p class="estado-actual" aria-live="polite">{mensaje}</p>
+      <button class="boton-accion grande" type="button" on:click={iniciarReto}>
+        {estado === 'running' ? 'Reiniciar reto' : 'Intentar de nuevo'}
+      </button>
     </section>
   {/if}
 </main>
