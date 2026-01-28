@@ -1,5 +1,6 @@
 <script>
   import { onDestroy, onMount, tick } from 'svelte'
+  import confetti from 'canvas-confetti'
 
   const TABLES = Array.from({ length: 12 }, (_, i) => i + 1)
   const MULTIPLIERS = Array.from({ length: 10 }, (_, i) => i + 1)
@@ -41,6 +42,13 @@
   let successTimer
 
   const metaDescription = 'Te hice esta página para que practiques! Completa cada tabla en menos de 40 segundos para demostrar que lograrás ganarte tu premio 📷'
+
+  function launchConfetti() {
+    if (typeof window === 'undefined') return
+    const base = { particleCount: 80, spread: 70, startVelocity: 40, scalar: 0.85 }
+    confetti({ ...base, origin: { x: 0.2, y: 0.6 }, colors: ['#ff8fab', '#ffd6a5', '#8fd3fe', '#a5e8ff'] })
+    confetti({ ...base, origin: { x: 0.8, y: 0.6 }, colors: ['#845ef7', '#f783ac', '#ffb347', '#7e6bff'] })
+  }
 
   function generateNewPractice() {
     practiceFactor = MULTIPLIERS[Math.floor(Math.random() * MULTIPLIERS.length)]
@@ -173,6 +181,9 @@
     statusMessage = succeeded
       ? '¡Tabla completa! Ese Instax Mini 12 ya te “mira” con cariño.'
       : 'El tiempo terminó, pero tu constancia es la magia. ¡Vamos de nuevo!'
+    if (succeeded) {
+      launchConfetti()
+    }
   }
 
   $: currentQuestion = questions[currentIndex]
