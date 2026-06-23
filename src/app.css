@@ -53,6 +53,14 @@ body {
   color: #51306d;
 }
 
+main {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .panel {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 28px;
@@ -148,6 +156,13 @@ body {
 .intro-actions strong {
   font-size: 1.4rem;
   color: #6f2dbd;
+}
+
+.intro-button-stack {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
 }
 
 .panel-header {
@@ -647,6 +662,303 @@ input[type='number'] {
   color: #5f3dc4;
 }
 
+.stats-panel {
+  gap: 1.35rem;
+}
+
+.stats-header,
+.stats-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.stats-header h2,
+.stats-section-header h3 {
+  margin: 0.1rem 0;
+  color: #45235c;
+}
+
+.stats-header p,
+.stats-section-header p {
+  margin: 0;
+  color: #6d4b8d;
+}
+
+.stats-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 20px;
+  background: #f8f2ff;
+  border: 2px solid rgba(111, 45, 189, 0.08);
+}
+
+.segmented-control {
+  display: inline-flex;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 2px #eadcff;
+}
+
+.segmented-control button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.65rem 1rem;
+  background: transparent;
+  color: #5b2f7b;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.segmented-control button.selected {
+  background: linear-gradient(120deg, #7f5dff, #ff7edb);
+  color: #ffffff;
+}
+
+.date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-weight: 800;
+  color: #6f2dbd;
+}
+
+.date-field span {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.date-field input {
+  border: none;
+  border-radius: 14px;
+  padding: 0.72rem 0.8rem;
+  color: #45235c;
+  font: inherit;
+  font-weight: 700;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 2px #ffd6f5;
+}
+
+.stats-refresh {
+  flex: 0 0 auto;
+  min-width: 130px;
+}
+
+.date-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.date-chip-row button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.55rem 0.85rem;
+  color: #5b2f7b;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 2px #eadcff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.date-chip-row button.selected {
+  color: #ffffff;
+  background: #6f2dbd;
+  box-shadow: none;
+}
+
+.stats-kpi-grid,
+.insight-grid,
+.table-performance-grid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.stats-kpi-grid {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.insight-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.table-performance-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.stats-kpi-grid article,
+.insight-grid article,
+.table-performance-grid article {
+  border-radius: 18px;
+  padding: 1rem;
+  background: #ffffff;
+  box-shadow: 0 12px 26px rgba(111, 45, 189, 0.09);
+  border: 2px solid rgba(255, 214, 245, 0.75);
+}
+
+.stats-kpi-grid span,
+.insight-grid span {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #a057c0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.stats-kpi-grid strong,
+.insight-grid strong {
+  display: block;
+  color: #45235c;
+  font-size: clamp(1.45rem, 3vw, 2rem);
+  line-height: 1.05;
+}
+
+.stats-kpi-grid small,
+.insight-grid small {
+  display: block;
+  margin-top: 0.45rem;
+  color: #6d4b8d;
+  font-weight: 700;
+}
+
+.stats-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.table-performance-grid article.empty {
+  opacity: 0.68;
+}
+
+.table-stat-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.table-stat-top strong {
+  color: #45235c;
+  font-size: 1.35rem;
+}
+
+.table-stat-top span {
+  color: #0f8c8f;
+  font-weight: 900;
+}
+
+.table-stat-meter {
+  height: 10px;
+  margin: 0.75rem 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8f4ff;
+}
+
+.table-stat-meter div {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(120deg, #51e0a1, #4cc9f0);
+}
+
+.table-performance-grid dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.table-performance-grid dl div {
+  padding: 0.65rem;
+  border-radius: 14px;
+  background: #fff7fb;
+}
+
+.table-performance-grid dt,
+.table-performance-grid dd {
+  margin: 0;
+}
+
+.table-performance-grid dt {
+  color: #a057c0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.table-performance-grid dd {
+  margin-top: 0.2rem;
+  color: #45235c;
+  font-weight: 900;
+}
+
+.table-performance-grid article p {
+  margin: 0.8rem 0 0;
+  color: #6d4b8d;
+  font-weight: 700;
+}
+
+.stats-table-wrap {
+  overflow: auto;
+  max-height: 520px;
+  border-radius: 18px;
+  border: 2px solid rgba(111, 45, 189, 0.1);
+  background: #ffffff;
+}
+
+.stats-table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 0.8rem 0.9rem;
+  border-bottom: 1px solid #f0e3ff;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.stats-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8f2ff;
+}
+
+.stats-table th button {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: #5b2f7b;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.stats-table td {
+  color: #51306d;
+  font-weight: 700;
+}
+
+.stats-table td strong {
+  color: #45235c;
+}
+
+.stats-table tr.needs-focus td {
+  background: #fff7e8;
+}
+
 @media (max-width: 720px) {
   .panel-header {
     flex-direction: column;
@@ -670,6 +982,27 @@ input[type='number'] {
   .intro-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .intro-button-stack,
+  .stats-header,
+  .stats-section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stats-controls {
+    align-items: stretch;
+  }
+
+  .segmented-control,
+  .stats-refresh,
+  .date-field input {
+    width: 100%;
+  }
+
+  .segmented-control button {
+    flex: 1;
   }
 
   .reto-header {

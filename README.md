@@ -24,6 +24,10 @@ npm run build   # genera la versión de producción
 npm run preview # sirve la build para revisión final también en http://localhost:5175
 ```
 
+## Testing
+
+Consulta [TESTING.md](/Users/camilopr/weeellp/dani-pop-quiz/TESTING.md) para el checklist manual de persistencia, migración, logging de intentos y regresiones.
+
 ## ¿Cómo practicar?
 
 1. En la pantalla de bienvenida, elige la tabla y usa la tarjeta de **Practica libre** para calentar.
