@@ -18,10 +18,10 @@ Aplicación hecha con Svelte + Vite para que Daniela practique las tablas de mul
 ## Scripts disponibles
 
 ```bash
-npm install     # instala dependencias
-npm run dev     # levanta el entorno de desarrollo en http://localhost:5175
-npm run build   # genera la versión de producción
-npm run preview # sirve la build para revisión final también en http://localhost:5175
+pnpm install # instala dependencias
+pnpm dev     # levanta el entorno de desarrollo en http://localhost:5175
+pnpm build   # genera la versión de producción
+pnpm preview # sirve la build para revisión final también en http://localhost:5175
 ```
 
 ## Testing

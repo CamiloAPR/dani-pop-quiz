@@ -7,6 +7,10 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# This project uses pnpm-lock.yaml as the source of truth.
+package-lock.json
+.pnpm-store/
+
 node_modules
 dist
 dist-ssr
