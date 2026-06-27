@@ -870,6 +870,78 @@ input[type='number'] {
   background: linear-gradient(120deg, #51e0a1, #4cc9f0);
 }
 
+.attempt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem 0.7rem;
+  color: #6d4b8d;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.attempt-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.challenge-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  min-height: 1.1rem;
+  margin: 0 0 0.85rem;
+  padding: 0;
+  list-style: none;
+}
+
+.challenge-timeline li {
+  display: flex;
+}
+
+.challenge-dot {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 1rem;
+  border-radius: 999px;
+  background: #a9a3b8;
+  box-shadow: 0 0 0 2px #ffffff, 0 5px 12px rgba(69, 35, 92, 0.18);
+}
+
+.challenge-timeline .challenge-dot {
+  cursor: help;
+}
+
+.attempt-legend .challenge-dot {
+  width: 0.72rem;
+  height: 0.72rem;
+  flex-basis: 0.72rem;
+  box-shadow: none;
+}
+
+.challenge-dot.success {
+  background: #21bf73;
+}
+
+.challenge-dot.timeout {
+  background: #ff5a5f;
+}
+
+.challenge-dot.reset {
+  background: #f7c948;
+}
+
+.challenge-dot.running {
+  background: #4cc9f0;
+}
+
+.challenge-dot.unknown {
+  background: #a9a3b8;
+}
+
 .table-performance-grid dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

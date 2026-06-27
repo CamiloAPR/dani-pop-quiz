@@ -17,6 +17,7 @@
   import {
     DEFAULT_STATS_SORT,
     buildStatsSummary,
+    challengeStatusLabels,
     createEmptyStatsData,
     sortFailureRows
   } from './lib/stats.js'
@@ -28,6 +29,7 @@
   const NUMPAD_DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
   const MAX_RESPONSE_DIGITS = 3
   const IDLE_STATUS_MESSAGE = 'Elige una tabla y presiona comenzar.'
+  const CHALLENGE_STATUS_LEGEND = ['success', 'timeout', 'reset', 'running']
 
   const applauseMessages = [
     '¡Brillas como un sol!',
@@ -87,6 +89,16 @@
   $: practicedFailureRows = statsSummary.pairRows.filter((row) => row.totalAttempts > 0)
   $: sortedFailureRows = sortFailureRows(practicedFailureRows, statsSort)
   $: statsRangeLabel = formatStatsRangeLabel(statsRangeMode, statsStartDate, statsEndDate)
+  $: completedTables = new Set(
+    Object.entries(tableProgress)
+      .filter(([, progress]) => progress?.starUnlocked || progress?.completions >= 1 || progress?.trophyUnlocked)
+      .map(([table]) => Number(table))
+  )
+  $: trophyTables = new Set(
+    Object.entries(tableProgress)
+      .filter(([, progress]) => progress?.trophyUnlocked)
+      .map(([table]) => Number(table))
+  )
 
   function launchConfetti() {
     if (typeof window === 'undefined') return
@@ -486,12 +498,17 @@
     return `${pair.commonWrongAnswer} (${pair.commonWrongAnswerCount})`
   }
 
-  function hasCompletedTable(table) {
-    return Boolean(tableProgress[table]?.starUnlocked || tableProgress[table]?.completions >= 1)
+  function formatChallengeStatus(status) {
+    return challengeStatusLabels[status] ?? challengeStatusLabels.unknown
   }
 
-  function hasTrophyForTable(table) {
-    return Boolean(tableProgress[table]?.trophyUnlocked)
+  function formatChallengeAttemptLabel(attempt, table) {
+    const number = attempt?.number ?? '?'
+    const status = formatChallengeStatus(attempt?.status)
+    const completed = Number.isFinite(attempt?.completedCount) ? attempt.completedCount : 0
+    const date = attempt?.dateKey ? ` · ${formatDateKey(attempt.dateKey)}` : ''
+
+    return `Tabla del ${table}, intento ${number}: ${status}, ${completed}/${MULTIPLIERS.length} respuestas${date}`
   }
 
   function getAnswerTiming(now) {
@@ -906,19 +923,21 @@
           <p>Escoge la tabla que quieres dominar hoy. Practica primero, luego corre contra el reloj.</p>
           <div class="tab-grid" aria-label="Selecciona la tabla que quieres practicar">
             {#each TABLES as table}
+              {@const completed = completedTables.has(table)}
+              {@const trophy = trophyTables.has(table)}
               <button
                 type="button"
                 class:selected={table === selectedTable}
-                class:completed={hasCompletedTable(table)}
-                class:trophy={hasTrophyForTable(table)}
+                class:completed={completed}
+                class:trophy={trophy}
                 disabled={progressLoading || finalizingAttempt}
                 on:click={() => (selectedTable = table)}
-                aria-label={`Tabla del ${table}${hasTrophyForTable(table) ? ' con trofeo' : hasCompletedTable(table) ? ' completada' : ''}`}
+                aria-label={`Tabla del ${table}${trophy ? ' con trofeo' : completed ? ' completada' : ''}`}
               >
                 × {table}
-                {#if hasCompletedTable(table)}
-                  <span class="tab-check" class:trophy={hasTrophyForTable(table)} aria-hidden="true">
-                    {hasTrophyForTable(table) ? '🏆' : '★'}
+                {#if completed}
+                  <span class="tab-check" class:trophy={trophy} aria-hidden="true">
+                    {trophy ? '🏆' : '★'}
                   </span>
                 {/if}
               </button>
@@ -1089,6 +1108,14 @@
               <p class="mini">Por tabla</p>
               <h3>Rendimiento general</h3>
             </div>
+            <div class="attempt-legend" aria-label="Leyenda de intentos">
+              {#each CHALLENGE_STATUS_LEGEND as challengeStatus}
+                <span>
+                  <i class={`challenge-dot ${challengeStatus}`} aria-hidden="true"></i>
+                  {formatChallengeStatus(challengeStatus)}
+                </span>
+              {/each}
+            </div>
           </div>
 
           <div class="table-performance-grid">
@@ -1101,6 +1128,20 @@
                 <div class="table-stat-meter" aria-hidden="true">
                   <div style={`width: ${Math.round((tableStats.masteryRate ?? 0) * 100)}%`}></div>
                 </div>
+                {#if tableStats.challengeHistory.length > 0}
+                  <ol class="challenge-timeline" aria-label={`Intentos de la tabla del ${tableStats.table}`}>
+                    {#each tableStats.challengeHistory as attempt}
+                      <li>
+                        <span
+                          class={`challenge-dot ${attempt.status}`}
+                          role="img"
+                          aria-label={formatChallengeAttemptLabel(attempt, tableStats.table)}
+                          title={formatChallengeAttemptLabel(attempt, tableStats.table)}
+                        ></span>
+                      </li>
+                    {/each}
+                  </ol>
+                {/if}
                 <dl>
                   <div>
                     <dt>Retos</dt>

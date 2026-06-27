@@ -9,6 +9,14 @@ export const failureTypeLabels = {
   reset_final: 'Reinicio'
 }
 
+export const challengeStatusLabels = {
+  success: 'Éxito',
+  timeout: 'Tiempo agotado',
+  reset: 'Reinicio',
+  running: 'En curso',
+  unknown: 'Sin estado'
+}
+
 export function createEmptyStatsData() {
   return {
     days: [],
@@ -55,7 +63,8 @@ function createTableStats(table) {
     challengeSuccessRate: null,
     accuracyRate: null,
     masteryRate: null,
-    commonFailure: null
+    commonFailure: null,
+    challengeHistory: []
   }
 }
 
@@ -97,6 +106,21 @@ function rate(part, total) {
 
 function byTableAndMultiplier(a, b) {
   return a.table - b.table || a.multiplier - b.multiplier
+}
+
+function normalizeChallengeStatus(status) {
+  return challengeStatusLabels[status] ? status : 'unknown'
+}
+
+function compareChallengeAttempts(a, b) {
+  const aTime = a.startedAt ?? a.endedAt ?? 0
+  const bTime = b.startedAt ?? b.endedAt ?? 0
+
+  if (aTime !== bTime) {
+    return aTime - bTime
+  }
+
+  return `${a.id ?? ''}`.localeCompare(`${b.id ?? ''}`)
 }
 
 function compareNullableNumbers(a, b, direction) {
@@ -194,6 +218,8 @@ export function buildStatsSummary(data, tables, multipliers) {
     const stats = tableStats.get(table)
     const status = attempt.status
     const finished = status && status !== 'running'
+    const startedAt = safeNumber(attempt.startedAt, null)
+    const endedAt = safeNumber(attempt.endedAt, null)
 
     totals.challenges += 1
     if (finished) {
@@ -206,6 +232,16 @@ export function buildStatsSummary(data, tables, multipliers) {
     }
 
     if (!stats) return
+
+    stats.challengeHistory.push({
+      id: attempt.id,
+      dateKey: attempt.dateKey,
+      status: normalizeChallengeStatus(status),
+      startedAt,
+      endedAt,
+      completedCount: safeNumber(attempt.completedCount),
+      maxTimeMs: safeNumber(attempt.maxTimeMs, null)
+    })
 
     stats.challenges += 1
     if (finished) {
@@ -340,6 +376,12 @@ export function buildStatsSummary(data, tables, multipliers) {
     stats.challengeSuccessRate = rate(stats.successfulChallenges, stats.finishedChallenges)
     stats.accuracyRate = rate(stats.correct, stats.submittedAnswers)
     stats.masteryRate = rate(stats.correct, stats.opportunities)
+    stats.challengeHistory = stats.challengeHistory
+      .sort(compareChallengeAttempts)
+      .map((attempt, index) => ({
+        ...attempt,
+        number: index + 1
+      }))
     return stats
   })
 
