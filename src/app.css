@@ -101,6 +101,23 @@ main {
   color: #5b2f7b;
 }
 
+.selector-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.selector-note {
+  margin: 0;
+  color: #6d4b8d;
+  font-weight: 700;
+}
+
+.selector-helper {
+  margin: 0;
+  color: #6f2dbd;
+}
+
 .practica-card h2 {
   margin: 0.3rem 0 0.6rem;
   font-size: clamp(1.8rem, 8vw, 2.4rem);
@@ -259,6 +276,30 @@ main {
 
 .tab-grid button.completed {
   box-shadow: 0 0 0 2px rgba(132, 93, 247, 0.3);
+}
+
+.level-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.6rem;
+}
+
+.level-grid button {
+  border: none;
+  border-radius: 18px;
+  padding: 0.9rem 1rem;
+  min-height: 56px;
+  background: #f7efff;
+  color: #5b2f7b;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.level-grid button.selected {
+  background: linear-gradient(120deg, #ff9f5a, #ff7edb);
+  color: #ffffff;
+  transform: translateY(-2px);
 }
 
 .tab-grid button.trophy {
@@ -1029,6 +1070,10 @@ input[type='number'] {
 
 .stats-table tr.needs-focus td {
   background: #fff7e8;
+}
+
+.arithmetic-grid article strong {
+  font-size: 1.15rem;
 }
 
 @media (max-width: 720px) {

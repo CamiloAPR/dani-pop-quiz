@@ -7,6 +7,10 @@ const LEGACY_COMPLETED_TABLES_KEY = 'completedTables'
 
 let db
 
+function countDigits(value) {
+  return `${Math.abs(Number(value) || 0)}`.length
+}
+
 function isBrowser() {
   return typeof window !== 'undefined'
 }
@@ -24,6 +28,47 @@ function getDb() {
       challengeAttempts: 'id, dateKey, table, status, startedAt, endedAt',
       answerAttempts: 'id, attemptId, dateKey, table, multiplier, outcome, failureType'
     })
+    db.version(2)
+      .stores({
+        days: '&dateKey, createdAt, updatedAt',
+        tableProgress: '[dateKey+table], dateKey, table',
+        skillProgress: '[dateKey+mode+difficultyLevel], dateKey, mode, difficultyLevel, skill, updatedAt',
+        challengeAttempts: 'id, dateKey, table, mode, skill, difficultyLevel, status, startedAt, endedAt',
+        answerAttempts:
+          'id, attemptId, dateKey, table, multiplier, mode, skill, difficultyLevel, operation, family, outcome, failureType'
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('challengeAttempts')
+          .toCollection()
+          .modify((row) => {
+            row.mode = row.mode || 'tables'
+            row.skill = row.skill || 'multiplication'
+            row.difficultyLevel = row.difficultyLevel ?? null
+            row.questionCount = row.questionCount ?? (Array.isArray(row.questionOrder) ? row.questionOrder.length : null)
+          })
+
+        await tx
+          .table('answerAttempts')
+          .toCollection()
+          .modify((row) => {
+            row.mode = row.mode || 'tables'
+            row.skill = row.skill || 'multiplication'
+            row.difficultyLevel = row.difficultyLevel ?? null
+            row.operation = row.operation || 'multiply'
+            row.operandA = row.operandA ?? row.table ?? null
+            row.operandB = row.operandB ?? row.multiplier ?? null
+            row.family = row.family ?? null
+            row.questionKey = row.questionKey || `multiply:${row.table}:${row.multiplier}`
+            row.questionLabel = row.questionLabel || `${row.table} × ${row.multiplier}`
+            row.carryFlag = row.carryFlag ?? null
+            row.borrowFlag = row.borrowFlag ?? null
+            row.crosses10 = row.crosses10 ?? null
+            row.crosses100 = row.crosses100 ?? null
+            row.digitsA = row.digitsA ?? countDigits(row.operandA)
+            row.digitsB = row.digitsB ?? countDigits(row.operandB)
+          })
+      })
   }
 
   return db
@@ -303,7 +348,18 @@ export async function loadStatsData({ startDateKey, endDateKey, allTime = false 
   }
 }
 
-export async function startChallengeAttempt({ dateKey, table, questionOrder, maxTimeMs }) {
+export async function startChallengeAttempt({
+  dateKey,
+  table = null,
+  questionOrder,
+  maxTimeMs,
+  mode = 'tables',
+  skill = 'multiplication',
+  difficultyLevel = null,
+  questionCount = null,
+  challengeLabel = null,
+  recommendedLevel = null
+}) {
   const database = getDb()
   if (!database) {
     return null
@@ -314,12 +370,18 @@ export async function startChallengeAttempt({ dateKey, table, questionOrder, max
     id: createId(),
     dateKey,
     table,
+    mode,
+    skill,
+    difficultyLevel,
     questionOrder: Array.isArray(questionOrder) ? [...questionOrder] : [],
     status: 'running',
     startedAt,
     endedAt: null,
     maxTimeMs,
-    completedCount: 0
+    completedCount: 0,
+    questionCount: questionCount ?? (Array.isArray(questionOrder) ? questionOrder.length : 0),
+    challengeLabel,
+    recommendedLevel
   }
 
   await database.transaction('rw', database.days, database.challengeAttempts, async () => {
@@ -341,13 +403,32 @@ export async function recordAnswerAttempt(answerAttempt) {
     id: answerAttempt.id || createId(),
     attemptId: answerAttempt.attemptId,
     dateKey: answerAttempt.dateKey,
-    table: answerAttempt.table,
-    multiplier: answerAttempt.multiplier,
+    table: answerAttempt.table ?? null,
+    multiplier: answerAttempt.multiplier ?? null,
+    mode: answerAttempt.mode || 'tables',
+    skill: answerAttempt.skill || 'multiplication',
+    difficultyLevel: answerAttempt.difficultyLevel ?? null,
+    operation: answerAttempt.operation || 'multiply',
+    operandA: answerAttempt.operandA ?? answerAttempt.table ?? null,
+    operandB: answerAttempt.operandB ?? answerAttempt.multiplier ?? null,
+    family: answerAttempt.family ?? null,
+    questionKey:
+      answerAttempt.questionKey ||
+      `${answerAttempt.operation || 'multiply'}:${answerAttempt.operandA ?? answerAttempt.table}:${answerAttempt.operandB ?? answerAttempt.multiplier}`,
+    questionLabel:
+      answerAttempt.questionLabel ||
+      `${answerAttempt.operandA ?? answerAttempt.table} ${answerAttempt.operation === 'add' ? '+' : '×'} ${answerAttempt.operandB ?? answerAttempt.multiplier}`,
     questionIndex: answerAttempt.questionIndex,
     expectedAnswer: answerAttempt.expectedAnswer,
     submittedAnswer: answerAttempt.submittedAnswer ?? null,
     outcome: answerAttempt.outcome,
     failureType: answerAttempt.failureType ?? null,
+    carryFlag: answerAttempt.carryFlag ?? null,
+    borrowFlag: answerAttempt.borrowFlag ?? null,
+    crosses10: answerAttempt.crosses10 ?? null,
+    crosses100: answerAttempt.crosses100 ?? null,
+    digitsA: answerAttempt.digitsA ?? countDigits(answerAttempt.operandA ?? answerAttempt.table),
+    digitsB: answerAttempt.digitsB ?? countDigits(answerAttempt.operandB ?? answerAttempt.multiplier),
     attemptStartedAt: answerAttempt.attemptStartedAt ?? answeredAt,
     answeredAt,
     durationMs: Math.max(0, Number(answerAttempt.durationMs) || 0),

@@ -16,11 +16,20 @@
   } from './lib/db.js'
   import {
     DEFAULT_STATS_SORT,
+    buildArithmeticStatsSummary,
     buildStatsSummary,
     challengeStatusLabels,
     createEmptyStatsData,
     sortFailureRows
   } from './lib/stats.js'
+  import {
+    ADDITION_FAMILY_LABELS,
+    ARITHMETIC_LEVELS,
+    CHALLENGE_MODE_SOLO_ADD,
+    CHALLENGE_MODE_TABLES,
+    createAdditionChallenge,
+    createTablesChallenge
+  } from './lib/challenges.js'
 
   const TABLES = Array.from({ length: 12 }, (_, i) => i + 1)
   const MULTIPLIERS = Array.from({ length: 10 }, (_, i) => i + 1)
@@ -28,8 +37,21 @@
   const MAX_TIME_MS = MAX_TIME * 1000
   const NUMPAD_DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
   const MAX_RESPONSE_DIGITS = 3
-  const IDLE_STATUS_MESSAGE = 'Elige una tabla y presiona comenzar.'
   const CHALLENGE_STATUS_LEGEND = ['success', 'timeout', 'reset', 'running']
+  const MODE_OPTIONS = [
+    {
+      id: CHALLENGE_MODE_TABLES,
+      title: 'Tablas',
+      introTitle: 'Reto de Multiplicaciones',
+      introDescription: 'Escoge la tabla que quieres dominar hoy. Luego corre contra el reloj.'
+    },
+    {
+      id: CHALLENGE_MODE_SOLO_ADD,
+      title: 'Solo sumas',
+      introTitle: 'Reto de Sumas',
+      introDescription: 'Haz sumas variadas y sube de nivel automaticamente cuando tu velocidad mejore.'
+    }
+  ]
 
   const applauseMessages = [
     '¡Brillas como un sol!',
@@ -48,12 +70,20 @@
   ]
 
   let selectedTable = 7
+  let selectedMode = CHALLENGE_MODE_TABLES
+  let selectedAdditionLevel = 1
+  let recommendedAdditionLevel = 1
+  let weakestAdditionFamily = null
+  let recentAdditionQuestionKeys = []
+  let arithmeticProfileLoading = false
+  let arithmeticProfileSyncPromise = null
   let questions = []
+  let currentChallengeMeta = null
   let currentIndex = 0
   let answer = ''
   let timeLeft = MAX_TIME
   let status = 'idle' // idle | running | success | timeout
-  let statusMessage = IDLE_STATUS_MESSAGE
+  let statusMessage = getIdleStatusMessage(CHALLENGE_MODE_TABLES)
   let intervalId
   let screen = 'intro' // intro | reto | stats
   let practiceFactor = MULTIPLIERS[0]
@@ -83,11 +113,13 @@
   let statsSort = { ...DEFAULT_STATS_SORT }
   let availableDateKeys = []
 
-  const metaDescription = 'Te hice esta página para que practiques! Completa cada tabla en menos de 40 segundos para demostrar que lograrás ganarte tu premio 📷'
+  const metaDescription = 'Te hice esta página para que practiques! Completa cada reto en menos de 40 segundos para demostrar que lograrás ganarte tu premio 📷'
 
   $: statsSummary = buildStatsSummary(statsRows, TABLES, MULTIPLIERS)
+  $: arithmeticStatsSummary = buildArithmeticStatsSummary(statsRows, { mode: CHALLENGE_MODE_SOLO_ADD })
   $: practicedFailureRows = statsSummary.pairRows.filter((row) => row.totalAttempts > 0)
   $: sortedFailureRows = sortFailureRows(practicedFailureRows, statsSort)
+  $: practicedAdditionFamilyRows = arithmeticStatsSummary.familyRows.filter((row) => row.totalAttempts > 0)
   $: statsRangeLabel = formatStatsRangeLabel(statsRangeMode, statsStartDate, statsEndDate)
   $: completedTables = new Set(
     Object.entries(tableProgress)
@@ -99,6 +131,61 @@
       .filter(([, progress]) => progress?.trophyUnlocked)
       .map(([table]) => Number(table))
   )
+  $: selectedModeMeta = MODE_OPTIONS.find((option) => option.id === selectedMode) ?? MODE_OPTIONS[0]
+  $: idleStatusMessage = getIdleStatusMessage(selectedMode)
+  $: challengeHeading = currentChallengeMeta?.introTitle ?? selectedModeMeta.introTitle
+  $: challengeDescription = currentChallengeMeta?.introDescription ?? selectedModeMeta.introDescription
+  $: additionLevelHelper =
+    selectedMode === CHALLENGE_MODE_SOLO_ADD
+      ? recommendedAdditionLevel > selectedAdditionLevel
+        ? `Nivel recomendado: ${recommendedAdditionLevel}. Si sigues asi, el reto te llevara arriba.`
+        : `Nivel recomendado: ${recommendedAdditionLevel}. El ascenso es automatico cuando superas 3 retos fuertes recientes.`
+      : ''
+
+  function getIdleStatusMessage(mode) {
+    if (mode === CHALLENGE_MODE_SOLO_ADD) {
+      return 'Elige un nivel de sumas y presiona comenzar.'
+    }
+
+    return 'Elige una tabla y presiona comenzar.'
+  }
+
+  function setSelectedMode(mode) {
+    selectedMode = mode
+    status = 'idle'
+    statusMessage = getIdleStatusMessage(mode)
+
+    if (mode === CHALLENGE_MODE_SOLO_ADD) {
+      selectedAdditionLevel = recommendedAdditionLevel
+    }
+  }
+
+  function formatAdditionFamily(family) {
+    return ADDITION_FAMILY_LABELS[family] ?? family ?? 'Sin familia'
+  }
+
+  function formatCurrentChallengeLabel() {
+    if (currentChallengeMeta?.title) {
+      return currentChallengeMeta.title
+    }
+
+    if (selectedMode === CHALLENGE_MODE_SOLO_ADD) {
+      return `Sumas nivel ${selectedAdditionLevel}`
+    }
+
+    return `Tabla del ${selectedTable}`
+  }
+
+  function createChallengeConfig() {
+    if (selectedMode === CHALLENGE_MODE_SOLO_ADD) {
+      return createAdditionChallenge(selectedAdditionLevel, {
+        weakFamily: weakestAdditionFamily,
+        recentQuestionKeys: recentAdditionQuestionKeys
+      })
+    }
+
+    return createTablesChallenge(selectedTable, { multipliers: MULTIPLIERS })
+  }
 
   function launchConfetti() {
     if (typeof window === 'undefined') return
@@ -230,6 +317,7 @@
     }
 
     await syncTodayProgress({ force: true })
+    await syncAdditionProfile()
   }
 
   async function syncTodayProgress({ force = false } = {}) {
@@ -259,7 +347,7 @@
         progressInitFailed = false
         if (screen === 'intro' && status !== 'running') {
           status = 'idle'
-          statusMessage = IDLE_STATUS_MESSAGE
+          statusMessage = idleStatusMessage
         }
         return true
       } catch (error) {
@@ -293,6 +381,49 @@
       tableProgress = await loadDayProgress(todayDateKey)
     } catch (error) {
       console.warn('No se pudo refrescar el progreso diario.', error)
+    }
+  }
+
+  async function syncAdditionProfile() {
+    if (typeof window === 'undefined') {
+      return false
+    }
+
+    if (arithmeticProfileSyncPromise) {
+      return arithmeticProfileSyncPromise
+    }
+
+    const syncTask = (async () => {
+      arithmeticProfileLoading = true
+
+      try {
+        const data = await loadStatsData({ allTime: true })
+        const summary = buildArithmeticStatsSummary(data, { mode: CHALLENGE_MODE_SOLO_ADD })
+        recommendedAdditionLevel = summary.recommendedLevel || 1
+        weakestAdditionFamily = summary.focusFamily?.family ?? null
+        recentAdditionQuestionKeys = summary.recentQuestionKeys ?? []
+
+        if (selectedMode === CHALLENGE_MODE_SOLO_ADD) {
+          selectedAdditionLevel = recommendedAdditionLevel
+        }
+
+        return true
+      } catch (error) {
+        console.warn('No se pudo cargar el perfil de sumas.', error)
+        return false
+      } finally {
+        arithmeticProfileLoading = false
+      }
+    })()
+
+    arithmeticProfileSyncPromise = syncTask
+
+    try {
+      return await syncTask
+    } finally {
+      if (arithmeticProfileSyncPromise === syncTask) {
+        arithmeticProfileSyncPromise = null
+      }
     }
   }
 
@@ -534,11 +665,26 @@
     return {
       attemptId: activeAttemptId,
       dateKey: todayDateKey,
-      table: selectedTable,
-      multiplier: question.b,
-      questionIndex,
-      expectedAnswer: question.a * question.b,
-      submittedAnswer,
+        table: question.table ?? (selectedMode === CHALLENGE_MODE_TABLES ? selectedTable : null),
+        multiplier: question.multiplier ?? null,
+        mode: question.mode,
+        skill: question.skill,
+        difficultyLevel: question.difficultyLevel,
+        operation: question.operation,
+        operandA: question.operandA,
+        operandB: question.operandB,
+        family: question.family,
+        questionKey: question.questionKey,
+        questionLabel: question.prompt,
+        carryFlag: question.carryFlag,
+        borrowFlag: question.borrowFlag,
+        crosses10: question.crosses10,
+        crosses100: question.crosses100,
+        digitsA: question.digitsA,
+        digitsB: question.digitsB,
+        questionIndex,
+        expectedAnswer: question.expectedAnswer,
+        submittedAnswer,
       outcome,
       failureType,
       attemptStartedAt: answerStartedAt,
@@ -576,7 +722,6 @@
       const questionIndex = currentIndex
       const completedCount = succeeded ? questions.length : currentIndex
       const attemptId = activeAttemptId
-      const table = selectedTable
       const dateKey = todayDateKey
 
       if (!succeeded && terminalFailureType && questionSnapshot) {
@@ -610,12 +755,12 @@
         }
       }
 
-      if (dateKey) {
+      if (dateKey && selectedMode === CHALLENGE_MODE_TABLES) {
         try {
           if (succeeded) {
-            await recordTableSuccess({ dateKey, table })
+            await recordTableSuccess({ dateKey, table: selectedTable })
           } else {
-            await recordTableFailure({ dateKey, table })
+            await recordTableFailure({ dateKey, table: selectedTable })
           }
           await refreshDayProgress()
         } catch (error) {
@@ -623,6 +768,10 @@
           handleChallengeStartFailure('No se pudo guardar el progreso del reto. Intenta otra vez.')
           return false
         }
+      }
+
+      if (selectedMode === CHALLENGE_MODE_SOLO_ADD) {
+        await syncAdditionProfile()
       }
 
       clearAttemptState()
@@ -660,15 +809,21 @@
       }
     }
 
-    const questionOrder = shuffle(MULTIPLIERS)
+    const challenge = createChallengeConfig()
     let attempt = null
 
     try {
       attempt = await startChallengeAttempt({
         dateKey: todayDateKey,
-        table: selectedTable,
-        questionOrder,
-        maxTimeMs: MAX_TIME_MS
+        table: challenge.mode === CHALLENGE_MODE_TABLES ? selectedTable : null,
+        questionOrder: challenge.questionOrder,
+        maxTimeMs: MAX_TIME_MS,
+        mode: challenge.mode,
+        skill: challenge.skill,
+        difficultyLevel: challenge.difficultyLevel,
+        questionCount: challenge.questionCount,
+        challengeLabel: challenge.title,
+        recommendedLevel: selectedMode === CHALLENGE_MODE_SOLO_ADD ? recommendedAdditionLevel : null
       })
     } catch (error) {
       console.warn('No se pudo iniciar el intento en IndexedDB.', error)
@@ -681,15 +836,13 @@
 
     const startedAt = Date.now()
 
-    questions = questionOrder.map((multiplier) => ({
-      a: selectedTable,
-      b: multiplier
-    }))
+    questions = challenge.questions
+    currentChallengeMeta = challenge
     currentIndex = 0
     answer = ''
     timeLeft = MAX_TIME
     status = 'running'
-    statusMessage = '¡Vamos, Daniela! Escucha tu ritmo y responde con calma.'
+    statusMessage = challenge.startMessage
     errorAnimation = false
     successAnimation = false
     activeAttemptId = attempt?.id ?? null
@@ -725,8 +878,8 @@
 
     status = succeeded ? 'success' : 'timeout'
     statusMessage = succeeded
-      ? '¡Tabla completa! Ese Instax Mini 12 ya te “mira” con cariño.'
-      : 'El tiempo terminó, pero tu constancia es la magia. ¡Vamos de nuevo!'
+      ? currentChallengeMeta?.successDescription ?? '¡Reto completado!'
+      : currentChallengeMeta?.timeoutDescription ?? 'El tiempo terminó, pero cada intento cuenta.'
 
     if (succeeded) {
       launchConfetti()
@@ -755,7 +908,7 @@
     const questionSnapshot = currentQuestion
     const questionIndex = currentIndex
     const answeredAt = Date.now()
-    const expected = questionSnapshot.a * questionSnapshot.b
+    const expected = questionSnapshot.expectedAnswer
 
     if (value === expected) {
       const recorded = await persistAnswerAttempt(
@@ -875,7 +1028,7 @@
       })
       if (!finalized) {
         screen = 'intro'
-        generateNewPractice()
+        currentChallengeMeta = null
         return
       }
     }
@@ -883,7 +1036,7 @@
     status = 'idle'
     screen = 'intro'
     resetChallengeUi()
-    generateNewPractice()
+    currentChallengeMeta = null
 
     if (!todayDateKey || getTodayDateKey() !== todayDateKey || progressInitFailed) {
       const synced = await syncTodayProgress({ force: progressInitFailed || !todayDateKey })
@@ -892,7 +1045,7 @@
       }
     }
 
-    statusMessage = IDLE_STATUS_MESSAGE
+    statusMessage = idleStatusMessage
   }
 
   onDestroy(() => {
@@ -905,44 +1058,82 @@
     }
   })
 
-  generateNewPractice()
 </script>
 
 <main>
   {#if screen === 'intro'}
     <section class="hero hero-intro">
       <p class="saludo">¡Hola Daniela! 🌈</p>
-      <h3>Reto de Multiplicaciones</h3>
+      <h3>{challengeHeading}</h3>
       <p class="meta">{metaDescription}</p>
     </section>
 
     <section class="panel intro-panel">
       <div class="intro-grid">
         <article class="intro-card selector-card">
-          <h2>Elige tu tabla favorita</h2>
-          <p>Escoge la tabla que quieres dominar hoy. Practica primero, luego corre contra el reloj.</p>
-          <div class="tab-grid" aria-label="Selecciona la tabla que quieres practicar">
-            {#each TABLES as table}
-              {@const completed = completedTables.has(table)}
-              {@const trophy = trophyTables.has(table)}
+          <h2>Elige tu reto</h2>
+          <p>{challengeDescription}</p>
+
+          <div class="segmented-control" role="group" aria-label="Selecciona el tipo de reto">
+            {#each MODE_OPTIONS as modeOption}
               <button
                 type="button"
-                class:selected={table === selectedTable}
-                class:completed={completed}
-                class:trophy={trophy}
-                disabled={progressLoading || finalizingAttempt}
-                on:click={() => (selectedTable = table)}
-                aria-label={`Tabla del ${table}${trophy ? ' con trofeo' : completed ? ' completada' : ''}`}
+                class:selected={selectedMode === modeOption.id}
+                disabled={progressLoading || finalizingAttempt || arithmeticProfileLoading}
+                on:click={() => setSelectedMode(modeOption.id)}
               >
-                × {table}
-                {#if completed}
-                  <span class="tab-check" class:trophy={trophy} aria-hidden="true">
-                    {trophy ? '🏆' : '★'}
-                  </span>
-                {/if}
+                {modeOption.title}
               </button>
             {/each}
           </div>
+
+          {#if selectedMode === CHALLENGE_MODE_TABLES}
+            <div class="selector-stack">
+              <p class="selector-note">Escoge la tabla que quieres dominar hoy.</p>
+              <div class="tab-grid" aria-label="Selecciona la tabla que quieres practicar">
+                {#each TABLES as table}
+                  {@const completed = completedTables.has(table)}
+                  {@const trophy = trophyTables.has(table)}
+                  <button
+                    type="button"
+                    class:selected={table === selectedTable}
+                    class:completed={completed}
+                    class:trophy={trophy}
+                    disabled={progressLoading || finalizingAttempt}
+                    on:click={() => (selectedTable = table)}
+                    aria-label={`Tabla del ${table}${trophy ? ' con trofeo' : completed ? ' completada' : ''}`}
+                  >
+                    × {table}
+                    {#if completed}
+                      <span class="tab-check" class:trophy={trophy} aria-hidden="true">
+                        {trophy ? '🏆' : '★'}
+                      </span>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {:else if selectedMode === CHALLENGE_MODE_SOLO_ADD}
+            <div class="selector-stack">
+              <p class="selector-note">El nivel sube automaticamente cuando completas retos fuertes recientes.</p>
+              <div class="level-grid" role="group" aria-label="Selecciona el nivel de sumas">
+                {#each ARITHMETIC_LEVELS as level}
+                  <button
+                    type="button"
+                    class:selected={selectedAdditionLevel === level}
+                    disabled={progressLoading || finalizingAttempt || arithmeticProfileLoading}
+                    on:click={() => (selectedAdditionLevel = level)}
+                  >
+                    Nivel {level}
+                  </button>
+                {/each}
+              </div>
+              <p class="mini selector-helper">{additionLevelHelper}</p>
+              {#if weakestAdditionFamily}
+                <p class="mini selector-helper">Punto a reforzar: {formatAdditionFamily(weakestAdditionFamily)}.</p>
+              {/if}
+            </div>
+          {/if}
         </article>
       </div>
 
@@ -953,7 +1144,10 @@
           {#if progressLoading}
             <p class="mini">Cargando progreso de hoy...</p>
           {/if}
-          {#if !progressLoading && statusMessage !== IDLE_STATUS_MESSAGE}
+          {#if arithmeticProfileLoading}
+            <p class="mini">Calculando el mejor nivel de sumas...</p>
+          {/if}
+          {#if !progressLoading && statusMessage !== idleStatusMessage}
             <p class="mini" aria-live="polite">{statusMessage}</p>
           {/if}
         </div>
@@ -961,7 +1155,7 @@
           <button
             class="boton-accion grande"
             type="button"
-            disabled={progressLoading || finalizingAttempt}
+            disabled={progressLoading || finalizingAttempt || arithmeticProfileLoading}
             on:click={beginChallenge}
           >
             Comenzar reto
@@ -1247,17 +1441,127 @@
             </table>
           </div>
         </section>
+
+        {#if arithmeticStatsSummary.totals.challenges > 0}
+          <section class="stats-section">
+            <div class="stats-section-header">
+              <div>
+                <p class="mini">Solo sumas</p>
+                <h3>Progreso aritmético</h3>
+              </div>
+            </div>
+
+            <div class="stats-kpi-grid">
+              <article>
+                <span>Retos</span>
+                <strong>{arithmeticStatsSummary.totals.successfulChallenges}/{arithmeticStatsSummary.totals.finishedChallenges}</strong>
+                <small>{formatPercent(arithmeticStatsSummary.totals.challengeSuccessRate)} completos</small>
+              </article>
+              <article>
+                <span>Nivel actual</span>
+                <strong>{arithmeticStatsSummary.recommendedLevel}</strong>
+                <small>Sube automaticamente cuando el ritmo alcanza</small>
+              </article>
+              <article>
+                <span>Precisión</span>
+                <strong>{formatPercent(arithmeticStatsSummary.totals.accuracyRate)}</strong>
+                <small>{arithmeticStatsSummary.totals.correct}/{arithmeticStatsSummary.totals.submittedAnswers} enviadas</small>
+              </article>
+              <article>
+                <span>Tiempo promedio</span>
+                <strong>{formatDuration(arithmeticStatsSummary.totals.avgCorrectMs)}</strong>
+                <small>Solo en aciertos de sumas</small>
+              </article>
+            </div>
+
+            <div class="insight-grid">
+              <article>
+                <span>Para reforzar</span>
+                <strong>{formatAdditionFamily(arithmeticStatsSummary.focusFamily?.family)}</strong>
+                <small>{arithmeticStatsSummary.focusFamily?.failures ?? 0} fallos</small>
+              </article>
+              <article>
+                <span>Más rápida</span>
+                <strong>{formatAdditionFamily(arithmeticStatsSummary.fastestFamily?.family)}</strong>
+                <small>{formatDuration(arithmeticStatsSummary.fastestFamily?.avgCorrectMs)}</small>
+              </article>
+            </div>
+
+            <div class="table-performance-grid arithmetic-grid">
+              {#each arithmeticStatsSummary.levelRows as levelRow}
+                <article class:empty={levelRow.challenges === 0}>
+                  <div class="table-stat-top">
+                    <strong>Nivel {levelRow.level}</strong>
+                    <span>{formatPercent(levelRow.masteryRate)}</span>
+                  </div>
+                  <div class="table-stat-meter" aria-hidden="true">
+                    <div style={`width: ${Math.round((levelRow.masteryRate ?? 0) * 100)}%`}></div>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Retos</dt>
+                      <dd>{levelRow.successfulChallenges}/{levelRow.finishedChallenges}</dd>
+                    </div>
+                    <div>
+                      <dt>Aciertos</dt>
+                      <dd>{levelRow.correct}</dd>
+                    </div>
+                    <div>
+                      <dt>Tiempo</dt>
+                      <dd>{formatDuration(levelRow.avgCorrectMs)}</dd>
+                    </div>
+                    <div>
+                      <dt>Fuertes</dt>
+                      <dd>{levelRow.strongRecentCount}/5</dd>
+                    </div>
+                  </dl>
+                </article>
+              {/each}
+            </div>
+
+            <div class="stats-table-wrap">
+              <table class="stats-table">
+                <thead>
+                  <tr>
+                    <th>Familia</th>
+                    <th>Fallos</th>
+                    <th>Dominio</th>
+                    <th>Tiempo acierto</th>
+                    <th>Última vez</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#if practicedAdditionFamilyRows.length === 0}
+                    <tr>
+                      <td colspan="5">Sin sumas registradas para este período.</td>
+                    </tr>
+                  {:else}
+                    {#each practicedAdditionFamilyRows as row}
+                      <tr class:needs-focus={row.failures > 0 && (row.masteryRate ?? 0) < 0.75}>
+                        <td><strong>{formatAdditionFamily(row.family)}</strong></td>
+                        <td>{row.failures}</td>
+                        <td>{formatPercent(row.masteryRate)}</td>
+                        <td>{formatDuration(row.avgCorrectMs)}</td>
+                        <td>{formatDateKey(row.lastSeenDateKey)}</td>
+                      </tr>
+                    {/each}
+                  {/if}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        {/if}
       {/if}
     </section>
   {:else}
     <section class="panel reto-panel">
       <header class="reto-banner">
         <div class="reto-banner__info">
-          <strong>Tabla del {selectedTable}</strong>
+          <strong>{formatCurrentChallengeLabel()}</strong>
         </div>
         <div class="reto-banner__acciones">
           <button class="boton-link" type="button" disabled={finalizingAttempt} on:click={goBackToIntro}>
-            Cambiar tabla
+            Cambiar reto
           </button>
         </div>
       </header>
@@ -1278,7 +1582,7 @@
             </div>
             <p>{progress}%</p>
           </div>
-          <h2>{currentQuestion.a} × {currentQuestion.b} = ?</h2>
+          <h2>{currentQuestion.prompt}</h2>
           <div class="answer-row">
             <div class="answer-pad">
               <div class="numpad-display" aria-live="polite" aria-label="Respuesta ingresada">
@@ -1311,22 +1615,14 @@
             </div>
           </div>
         {:else if status === 'success'}
-          <h2>¡Lo lograste!</h2>
-          <p>
-            Respondiste las {questions.length} multiplicaciones sin rendirte. La Instax Mini 12
-            ya puede preparar un carrete pastelito.
-          </p>
+          <h2>{currentChallengeMeta?.successTitle ?? '¡Lo lograste!'}</h2>
+          <p>{currentChallengeMeta?.successDescription ?? 'Terminaste el reto completo.'}</p>
         {:else if status === 'timeout'}
-          <h2>Tiempo fuera</h2>
-          <p>
-            El reloj llegó a cero, pero cada intento suma. Respira, revisa la tabla y prueba otra vez.
-          </p>
+          <h2>{currentChallengeMeta?.timeoutTitle ?? 'Tiempo fuera'}</h2>
+          <p>{currentChallengeMeta?.timeoutDescription ?? 'El reloj llegó a cero, pero cada intento suma.'}</p>
         {:else}
           <h2>¿Listísima?</h2>
-          <p>
-            Pulsa "Intentar de nuevo" para generar 10 multiplicaciones en menos de {MAX_TIME} segundos
-            y demuestra que ninguna tabla te gana.
-          </p>
+          <p>{currentChallengeMeta?.retryDescription ?? `Pulsa "Intentar de nuevo" para generar otro reto de ${questions.length || 10} preguntas.`}</p>
         {/if}
       </article>
 
